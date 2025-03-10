@@ -1,5 +1,7 @@
 from backend.Socket import socketClass
 from backend.ServerSocket import serverSocketClass
+from backend.FileManager import fileManager
+from models.Command import Command
 from models.enums.DataType import DataType
 from models.enums.CommandType import CommandType
 
@@ -19,7 +21,7 @@ class connection:
     def __init__(self):
         self.socket = socketClass()
         self.server = serverSocketClass()
-        self.fileQueue = queue.Queue()
+        self.fileManager = fileManager()
         self.folderQueue = queue.Queue()
         self.screenQueue = queue.Queue()
         self.audioQueue = queue.Queue()
@@ -92,7 +94,7 @@ class connection:
                 case DataType.SCREEN.value:
                     self.screenQueue.put(finalData)
                 case DataType.FILE.value:
-                    self.fileQueue.put(finalData)
+                    self.fileManager.queue.put(finalData)
                 case DataType.FOLDER.value:
                     self.folderQueue.put(finalData)
                 case DataType.KEYBOARD.value:
@@ -106,13 +108,13 @@ class connection:
                 LOGGER.error("Marking more tasks as done than get in socket receive queue")
             
     def __bifurcateCommands(self,data):
-        unpackedData: dict = msgpack.unpackb(data)
-        if not unpackedData.get("type"):
+        command: Command = Command.from_dict(msgpack.unpackb(data))
+        if not command.type:
             LOGGER.error("Couldn't find command type in command data")
             return
-        match unpackedData.get("type"):
+        match command.type:
             case CommandType.ACK_FILE.value:
-                # TODO: write code here to unblock file sender
+                self.fileManager.executeCommand(command)
                 return
         
     def __startReceiveThread(self):
