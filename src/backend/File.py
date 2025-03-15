@@ -1,5 +1,4 @@
 import queue
-from backend.Connection import connection
 import threading as th
 import msgpack
 
@@ -10,7 +9,7 @@ from models.enums.DataType import DataType
 from models.enums.CommandType import CommandType
 from models.Command import Command
 
-from backend.FileUtil import createSendingPackage
+from backend.util.FileUtil import createSendingPackage
 
 class file:
     __sendLock = th.Event()
@@ -19,12 +18,12 @@ class file:
     __sendThread = None
     # __receiveThread = None
     error = None
-    def __init__(self, fileName: str, fileLocation: str, fileSizeInBytes: int, connectionObject: connection, send: bool, uniqueId: str):
+    def __init__(self, fileName: str, fileLocation: str, fileSizeInBytes: int, sendingQueue: queue.Queue, send: bool, uniqueId: str):
         self.receivingQueue = queue.Queue(1)
-        self.fileName: str = fileName
+        self.fileName: str = fileLocation.split("\\")[-1] if send==True else fileName
         self.fileLocation: str = fileLocation
         self.fileSizeInBytes: int = fileSizeInBytes
-        self.connection: connection = connectionObject
+        self.sendingQueue: queue.Queue = sendingQueue
         self.progress: float = 0.0
         self.bytesProcessed: int = 0
         self.file = open(fileLocation,"rb" if send==True else "wb")
@@ -39,7 +38,9 @@ class file:
         try:
             while self.__sendLock.is_set():
                 data=self.file.read(CONFIGS.fileConfigs.chunkSize)
-                self.connection.sendingQueue.put(createSendingPackage(data,self.uuid))
+                if not data:
+                    break
+                self.sendingQueue.put(createSendingPackage(data,self.uuid))
                 self.__ackLock.clear()
                 while self.__sendLock.is_set():
                     self.__ackLock.wait(timeout = 1.0)
@@ -71,7 +72,7 @@ class file:
         self.bytesProcessed+=len(data)
         self.progress = float(self.bytesProcessed)/float(self.fileSizeInBytes)
         ack = msgpack.packb(Command(CommandType.ACK_FILE, {"uuid":self.uuid}).to_dict())
-        self.connection.sendingQueue.put({"type":DataType.COMMAND, "data": ack})
+        self.sendingQueue.put({"type":DataType.COMMAND, "data": ack})
             
     def startSendThread(self):
         self.__sendLock.set()
@@ -99,7 +100,9 @@ class file:
     #             return False
     #     return True
     
-    def closeFile(self):
+    def closeFile(self, error=""):
+        if error:
+            self.error = error
         # if(self.__stopSendThread() and self.__stopReceiveThread()):
         if(self.__stopSendThread()):
             self.file.close()

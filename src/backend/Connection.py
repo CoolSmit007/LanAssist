@@ -113,7 +113,9 @@ class connection:
             LOGGER.error("Couldn't find command type in command data")
             return
         match command.type:
-            case CommandType.ACK_FILE.value:
+            case (CommandType.FILE_REQUEST.value | CommandType.ACCEPT_FILE.value 
+                  | CommandType.REJECT_FILE.value | CommandType.ACK_FILE.value 
+                  | CommandType.ERROR_FILE.value):
                 self.fileManager.executeCommand(command)
                 return
         
