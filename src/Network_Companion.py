@@ -245,7 +245,7 @@ def receive_keyboard():
                     if key_str.startswith("Key."):
                         key = getattr(Key, key_str[4:])
                     else:
-                        key = key_str
+                        key = key_str.replace("'","")
                 except AttributeError:
                     key = key_str  # fallback if it's an unknown special key
 
