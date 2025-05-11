@@ -7,14 +7,13 @@ import os
 from models.Command import Command
 from models.enums.CommandType import CommandType
 from models.enums.DataType import DataType
+from models.enums.FileStatus import FileStatus
 from backend.File import file
 from models.file.FileRequest import FileRequest
 
-from backend.util.FileUtil import decodeReceivingPackage
+from util.FileUtil import decodeReceivingPackage
 from log_init import LOGGER
 
-# TODO: remove this and move to frontend kept for testing
-from tkinter.filedialog import askopenfilename
 class fileManager:
     __receiveLock = th.Event()
     __receiveThread = None
@@ -29,6 +28,7 @@ class fileManager:
         
     def executeCommand(self,command:Command):
         match command.type:
+            # handle all command types.
             case CommandType.FILE_REQUEST.value:
                 fileRequest = FileRequest.from_dict(command.data)
                 
@@ -54,7 +54,8 @@ class fileManager:
         match errorCode:
             case "id_already_exists":
                 LOGGER.error("Receiver already had the same uuid mapped to different file.")
-                self.fileMap[id].closeFile("Some error occured while sending this file try again")
+                self.fileMap[id].error = "Some error occured while sending this file try again"
+                self.fileMap[id].closeFile()
             case _:
                 LOGGER.error("No handling of error code: %s",errorCode)
         
@@ -95,23 +96,38 @@ class fileManager:
                 error = msgpack.packb(Command(CommandType.ERROR_FILE, {"uuid":id, "error_code":"id_already_exists"}).to_dict())
                 self.sendingQueue.put({"type":DataType.COMMAND, "data": error})
                 return None
-        f:file = file(fileName,fileLocation, fileSizeInBytes, self.sendingQueue, send, id)
+        f:file = file(fileName,fileLocation, fileSizeInBytes, self.sendingQueue, send, id, FileStatus.PROCESSING if not send and self.autoAccept else None )
         self.fileMap[id]=f
         return id
         
-    def sendFile(self):
-        fileDirectory = askopenfilename()
+    def sendFile(self, fileDirectory):
+        fileDirectory = fileDirectory
         fileName = fileDirectory.split("/")[-1]
         fileSize =  os.path.getsize(fileDirectory)
         id = self.createFileObject(fileName, fileDirectory, fileSize, True, "")
         request = msgpack.packb(Command(CommandType.FILE_REQUEST, FileRequest(fileName, fileSize, id).to_dict()))
         self.sendingQueue.put({"type":DataType.COMMAND, "data":request})
         
-    def receiveFile(self, fileName, fileSize, id):
-        if(not self.autoAccept):
-            LOGGER.info("Request recieved for file %s with size %s",fileName, fileSize)
+    def receiveFile(self, fileName:str, fileSize:int, id:str):
+        id = self.createFileObject(fileName, "", fileSize, False, id)
+        if(id == None):
+            return
+        if(self.autoAccept):
+            self.acceptReceive(id, self.downloadLocation)
+    
+    def acceptReceive(self, id:str, downloadLocation: str):
+        # //send accept receive command        
+        self.fileMap[id].prepareReceive(downloadLocation)
+        
+    def rejectReceive(self, id:str):
+        # //send reject receive command
+        self.fileMap[id].rejectReceive()
             
-        id = self.createFileObject(fileName, )
+    def enableAutoAccept(self, downloadLocation=None):
+        if(downloadLocation):
+            self.downloadLocation = downloadLocation
+        self.autoAccept=True
+        
     def stopFilemanager(self):
         self.__stopReceiveThread()
         for x,y in self.fileMap.items():
