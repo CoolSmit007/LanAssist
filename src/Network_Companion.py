@@ -148,15 +148,15 @@ def mouse_on_click(x, y, button, pressed):
     
 def keyboard_on_press(key):
     try:
-        if key.char:
-            th.Thread(target=send_mouse_keyboard_data, args=("key_press", {"key": key.char})).start()
+        # if key.char:
+        th.Thread(target=send_mouse_keyboard_data, args=("key_press", {"key": str(key)})).start()
     except AttributeError:
         th.Thread(target=send_mouse_keyboard_data, args=("key_press", {"key": str(key)})).start()
 
 def keyboard_on_release(key):
     try:
-        if key.char:
-            th.Thread(target=send_mouse_keyboard_data, args=("key_release", {"key": key.char})).start()
+        # if key.char:
+        th.Thread(target=send_mouse_keyboard_data, args=("key_release", {"key": str(key)})).start()
     except AttributeError:
         th.Thread(target=send_mouse_keyboard_data, args=("key_release", {"key": str(key)})).start()
         
@@ -240,21 +240,19 @@ def receive_keyboard():
             events = recieve_data.decode().strip().split("\n")
             for event in events:
                 event_data = json.loads(event)
-                # print(event_data)
-                # continue
-                if event_data["type"] == "key_press":
-                    key = event_data["key"]
-                    if len(key) > 1 and hasattr(Key, key.replace("'", "")):  
-                        keyboard_stream_controller.press(getattr(Key, key.replace("'", "")))
+                key_str = event_data["key"]
+                try:
+                    if key_str.startswith("Key."):
+                        key = getattr(Key, key_str[4:])
                     else:
-                        keyboard_stream_controller.press(key)
+                        key = key_str
+                except AttributeError:
+                    key = key_str  # fallback if it's an unknown special key
 
+                if event_data["type"] == "key_press":
+                    keyboard_stream_controller.press(key)
                 elif event_data["type"] == "key_release":
-                    key = event_data["key"]
-                    if len(key) > 1 and hasattr(Key, key.replace("'", "")):  
-                        keyboard_stream_controller.release(getattr(Key, key.replace("'", "")))
-                    else:
-                        keyboard_stream_controller.release(key)
+                    keyboard_stream_controller.release(key)
         except ValueError:
             # print("ValueError")
             continue
